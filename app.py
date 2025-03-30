@@ -48,7 +48,6 @@ def get_usage_count(email):
 # ✅ OCR: 이미지에서 텍스트 추출
 # ------------------
 def extract_text_from_image(image_file) -> str:
-    # 이미지 파일(PIL Image)로 열기
     img = Image.open(image_file)
     # pytesseract를 사용해 OCR 수행 (한글+영어)
     text = pytesseract.image_to_string(img, lang='kor+eng')
@@ -57,7 +56,7 @@ def extract_text_from_image(image_file) -> str:
 def parse_ocr_text(ocr_text):
     """
     OCR 텍스트에서 '아파트명'과 '시세'를 추출하는 예시 함수.
-    예시 텍스트: "아파트명: 센트럴팰리스, 시세: 12345만 원"
+    예시: "아파트명: 센트럴팰리스, 시세: 12345만 원"
     """
     apt_pattern = r"아파트명\s*[:：]\s*([^\s,]+)"
     price_pattern = r"시세\s*[:：]\s*(\d+)"
@@ -85,7 +84,7 @@ st.title("🏠 아파트 가치 평가 프로그램")
 st.write("안녕하세요! 이 앱은 아파트 시세와 분석 정보를 제공합니다.")
 
 # ------------------
-# 이미지 업로드 + OCR 처리
+# 이미지 업로드 + OCR 처리 및 분석하기 버튼
 # ------------------
 uploaded_image = st.file_uploader("아파트 정보 이미지 업로드 (시세, 이름 포함)", type=["png", "jpg", "jpeg"])
 if uploaded_image:
@@ -96,9 +95,14 @@ if uploaded_image:
     apt_name_parsed, price_parsed = parse_ocr_text(extracted_text)
     if apt_name_parsed and price_parsed:
         st.success(f"자동 인식 - 아파트명: {apt_name_parsed}, 시세: {price_parsed}만원")
-        # st.session_state를 사용해 입력 필드에 반영
-        st.session_state["apt_name"] = apt_name_parsed
-        st.session_state["price"] = price_parsed
+    else:
+        st.warning("OCR 결과에서 아파트명이나 시세를 인식하지 못했습니다.")
+    # '분석하기' 버튼을 눌러 OCR 결과를 입력란에 반영
+    if st.button("분석하기 (OCR 결과 반영)"):
+        if apt_name_parsed:
+            st.session_state["apt_name"] = apt_name_parsed
+        if price_parsed:
+            st.session_state["price"] = price_parsed
 
 # ------------------
 # 텍스트로 직접 입력 (세션 상태와 연동)
@@ -153,7 +157,6 @@ if apt_name and price > 0:
             return response.choices[0].message.content.strip()
         
         if openai.api_key:
-            # GPT 사용 한도 (예: standard는 일 5회)
             if user_plan == "standard" and get_usage_count(user_email) >= 5:
                 st.warning("GPT 사용 한도를 초과했습니다. (일 5회)")
             else:
@@ -203,3 +206,23 @@ if apt_name and price > 0:
         st.warning("🔒 이 항목은 유료 구독자에게만 제공됩니다.")
     else:
         st.info("왼쪽 사이드바에 이메일을 입력하면 전체 기능이 활성화됩니다.")
+
+# 함수: GPT 사용 기록 관련
+def increment_usage(email):
+    try:
+        df = pd.read_csv("gpt_usage.csv")
+    except:
+        df = pd.DataFrame(columns=["email", "count"])
+    if email in df.email.values:
+        df.loc[df.email == email, "count"] += 1
+    else:
+        df = pd.concat([df, pd.DataFrame([[email, 1]], columns=["email", "count"])], ignore_index=True)
+    df.to_csv("gpt_usage.csv", index=False)
+
+def get_usage_count(email):
+    try:
+        df = pd.read_csv("gpt_usage.csv")
+        return int(df[df.email == email]["count"].values[0])
+    except:
+        return 0
+
