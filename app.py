@@ -98,7 +98,6 @@ if uploaded_image:
     else:
         st.warning("OCR 결과에서 아파트명이나 시세를 인식하지 못했습니다.")
     if st.button("분석하기 (OCR 결과 반영)"):
-        # 분석하기 버튼 클릭 시, 세션 상태에 저장하여 입력 필드에 반영
         if apt_name_parsed:
             st.session_state["apt_name"] = apt_name_parsed
         if price_parsed:
@@ -110,7 +109,6 @@ if uploaded_image:
 apt_name = st.text_input("🏢 아파트 이름 입력", key="apt_name")
 price = st.number_input("💰 현재 시세 (만원)", min_value=0, key="price")
 
-# 만약 OCR 결과로 자동 입력된 값이 있으면, 분석 부분이 실행됩니다.
 if apt_name and price > 0:
     st.subheader("📊 요약 평가 (v1~v2 기반)")
     st.write(f"`{apt_name}` 의 시세는 {price:,}만원입니다.")
