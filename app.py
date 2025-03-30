@@ -50,7 +50,10 @@ def preprocess_for_ocr(image_file):
     file_bytes = np.asarray(bytearray(image_file.read()), dtype=np.uint8)
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
+    gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
+    blurred = cv2.bilateralFilter(gray, 9, 75, 75)
+    thresh = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                   cv2.THRESH_BINARY, 31, 15)
     return thresh
 
 # ✅ OCR 추출
@@ -58,23 +61,24 @@ def preprocess_for_ocr(image_file):
 def extract_text_from_image(image_file) -> str:
     processed_img = preprocess_for_ocr(image_file)
     pil_img = Image.fromarray(processed_img)
-    text = pytesseract.image_to_string(pil_img, lang='kor+eng')
+    config = r'--oem 3 --psm 6'
+    text = pytesseract.image_to_string(pil_img, lang='kor+eng', config=config)
     return text
 
 # ✅ OCR 파싱
 
 def parse_ocr_text(ocr_text):
-    name_pattern = r"^(.*?)\s+매매"
+    name_pattern = r"^(.*?)(?=\s*매[매메])"
     nm = re.search(name_pattern, ocr_text)
     apt_name = nm.group(1).strip() if nm else None
 
-    price_pattern = r"매매\s+(\d+(?:\.\d+)?)\s*억\s*(\d+(?:[.,]\d+)?)?"
+    price_pattern = r"(\d+)\s*억\s*(\d{1,3}(?:[.,]?\d{3})?)"
     match_price = re.search(price_pattern, ocr_text)
     price_val = 0
     if match_price:
         main_val = float(match_price.group(1))
-        sub_val = match_price.group(2)
-        sub_val = float(sub_val.replace(",", "").replace(".", "")) if sub_val else 0
+        sub_val = match_price.group(2).replace(",", "").replace(".", "")
+        sub_val = float(sub_val) if sub_val else 0
         price_val = int(main_val * 10000 + sub_val)
 
     pyeong_pattern = r"(\d+(?:\.\d+)?)\s*py"
@@ -90,40 +94,6 @@ def parse_ocr_text(ocr_text):
     direction_val = match_direction.group(1) if match_direction else None
 
     return apt_name, price_val, pyeong_val, floor_val, direction_val
-
-# ✅ 이메일 인증 및 UI
-user_email = st.sidebar.text_input("이메일을 입력하세요")
-user_plan = load_user_plan(user_email) if user_email else None
-is_premium_user = user_plan in ["standard", "pro"]
-
-st.title("\U0001F3E0 아파트 가치 평가 프로그램")
-st.write("안녕하세요! 이 앱은 아파트 시세와 분석 정보를 제공합니다.")
-
-# ✅ 이미지 업로드 & 분석
-uploaded_image = st.file_uploader("아파트 정보 이미지 업로드 (매매, 평수, 층수, 방향 포함)", type=["png", "jpg", "jpeg"])
-if uploaded_image:
-    image_bytes = uploaded_image.read()
-    extracted_text = extract_text_from_image(BytesIO(image_bytes))
-    st.write("**OCR 추출 결과:**")
-    st.write(extracted_text)
-    apt_name_parsed, price_parsed, pyeong_parsed, floor_parsed, direction_parsed = parse_ocr_text(extracted_text)
-    if apt_name_parsed and price_parsed:
-        st.success(f"자동 인식 - 아파트명: {apt_name_parsed}, 시세: {price_parsed}만원")
-        if pyeong_parsed:
-            st.success(f"평수: {pyeong_parsed}py")
-        if floor_parsed:
-            st.success(f"층수: {floor_parsed}")
-        if direction_parsed:
-            st.success(f"방향: {direction_parsed}")
-    else:
-        st.warning("OCR 결과에서 아파트명이나 시세를 인식하지 못했습니다.")
-    if st.button("분석하기 (OCR 결과 반영)"):
-        if apt_name_parsed:
-            st.session_state["apt_name"] = apt_name_parsed
-        if price_parsed:
-            st.session_state["price"] = price_parsed
-
-# ✅ 입력 필드
 apt_name = st.text_input("\U0001F3E2 아파트 이름 입력", key="apt_name")
 price = st.number_input("\U0001F4B0 현재 시세 (만원)", min_value=0, key="price")
 
@@ -139,6 +109,7 @@ if apt_name and price > 0:
         irr = round((price * 0.04) / (price * 0.6) * 100, 2)
         st.write("### 투자 지표")
         st.write(f"- PIR: {pir}\n- IRR: {irr}%\n- 보안등급: 중간")
+
         st.write("### \U0001F4E1 레이더 차트")
         st.radar_chart({"분석요소": [80, 70, 90]})
 
@@ -198,10 +169,12 @@ if apt_name and price > 0:
 
         pdf = generate_pdf()
         st.download_button("PDF 보고서 다운로드", data=pdf, file_name="apt_report.pdf")
-        st.write("### \U0001F469\u200D\U0001F3EB 전문가 총평")
+
+        st.write("### \U0001F469‍\U0001F3EB 전문가 총평")
         st.info("- '빠숑': 입지 전문가\n- '신성철': 거시경제 전문가\n- '훨훨': 실거주 분석 전문가\n- '당부쌤': 정주여건·수요 흐름 분석가")
 
     elif user_email:
         st.warning("\U0001F512 이 항목은 유료 구독자에게만 제공됩니다.")
     else:
         st.info("왼쪽 사이드바에 이메일을 입력하면 전체 기능이 활성화됩니다.")
+
