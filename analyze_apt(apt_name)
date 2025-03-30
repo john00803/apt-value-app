@@ -1,0 +1,4 @@
+apt_name = st.text_input("아파트 이름을 입력하세요:")
+if apt_name:
+    st.write(f"{apt_name}에 대한 분석 결과는 다음과 같습니다.")
+    # 이후 분석 로직 연결
