@@ -59,7 +59,7 @@ def parse_ocr_text(ocr_text):
     예시: "아파트명: 센트럴팰리스, 시세: 12345만 원"
     """
     apt_pattern = r"아파트명\s*[:：]\s*([^\s,]+)"
-    price_pattern = r"시세\s*[:：]\s*(\d+)"
+    price_pattern = r"시세\s*[:：]\s*(\d+)\s*만?\s*원?"
     
     apt_match = re.search(apt_pattern, ocr_text)
     price_match = re.search(price_pattern, ocr_text)
@@ -84,7 +84,7 @@ st.title("🏠 아파트 가치 평가 프로그램")
 st.write("안녕하세요! 이 앱은 아파트 시세와 분석 정보를 제공합니다.")
 
 # ------------------
-# 이미지 업로드 + OCR 처리 및 분석하기 버튼
+# 이미지 업로드 + OCR 처리 및 '분석하기' 버튼
 # ------------------
 uploaded_image = st.file_uploader("아파트 정보 이미지 업로드 (시세, 이름 포함)", type=["png", "jpg", "jpeg"])
 if uploaded_image:
@@ -97,8 +97,8 @@ if uploaded_image:
         st.success(f"자동 인식 - 아파트명: {apt_name_parsed}, 시세: {price_parsed}만원")
     else:
         st.warning("OCR 결과에서 아파트명이나 시세를 인식하지 못했습니다.")
-    # '분석하기' 버튼을 눌러 OCR 결과를 입력란에 반영
     if st.button("분석하기 (OCR 결과 반영)"):
+        # 분석하기 버튼 클릭 시, 세션 상태에 저장하여 입력 필드에 반영
         if apt_name_parsed:
             st.session_state["apt_name"] = apt_name_parsed
         if price_parsed:
@@ -110,6 +110,7 @@ if uploaded_image:
 apt_name = st.text_input("🏢 아파트 이름 입력", key="apt_name")
 price = st.number_input("💰 현재 시세 (만원)", min_value=0, key="price")
 
+# 만약 OCR 결과로 자동 입력된 값이 있으면, 분석 부분이 실행됩니다.
 if apt_name and price > 0:
     st.subheader("📊 요약 평가 (v1~v2 기반)")
     st.write(f"`{apt_name}` 의 시세는 {price:,}만원입니다.")
@@ -207,7 +208,9 @@ if apt_name and price > 0:
     else:
         st.info("왼쪽 사이드바에 이메일을 입력하면 전체 기능이 활성화됩니다.")
 
-# 함수: GPT 사용 기록 관련
+# ------------------
+# GPT 사용 기록 관련 함수 (아래로 이동)
+# ------------------
 def increment_usage(email):
     try:
         df = pd.read_csv("gpt_usage.csv")
@@ -225,4 +228,3 @@ def get_usage_count(email):
         return int(df[df.email == email]["count"].values[0])
     except:
         return 0
-
