@@ -1,5 +1,6 @@
 streamlit
 openai
+pandas
 gspread
 google-auth
-pandas
+reportlab
