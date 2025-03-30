@@ -94,6 +94,39 @@ def parse_ocr_text(ocr_text):
     direction_val = match_direction.group(1) if match_direction else None
 
     return apt_name, price_val, pyeong_val, floor_val, direction_val
+
+# ✅ 이메일 인증 및 UI
+user_email = st.sidebar.text_input("이메일을 입력하세요")
+user_plan = load_user_plan(user_email) if user_email else None
+is_premium_user = user_plan in ["standard", "pro"]
+
+st.title("\U0001F3E0 아파트 가치 평가 프로그램")
+st.write("안녕하세요! 이 앱은 아파트 시세와 분석 정보를 제공합니다.")
+
+# ✅ 이미지 업로드 & 분석
+uploaded_image = st.file_uploader("아파트 정보 이미지 업로드 (매매, 평수, 층수, 방향 포함)", type=["png", "jpg", "jpeg"])
+if uploaded_image:
+    image_bytes = uploaded_image.read()
+    extracted_text = extract_text_from_image(BytesIO(image_bytes))
+    st.write("**OCR 추출 결과:**")
+    st.write(extracted_text)
+    apt_name_parsed, price_parsed, pyeong_parsed, floor_parsed, direction_parsed = parse_ocr_text(extracted_text)
+    if apt_name_parsed and price_parsed:
+        st.success(f"자동 인식 - 아파트명: {apt_name_parsed}, 시세: {price_parsed}만원")
+        if pyeong_parsed:
+            st.success(f"평수: {pyeong_parsed}py")
+        if floor_parsed:
+            st.success(f"층수: {floor_parsed}")
+        if direction_parsed:
+            st.success(f"방향: {direction_parsed}")
+    else:
+        st.warning("OCR 결과에서 아파트명이나 시세를 인식하지 못했습니다.")
+    if st.button("분석하기 (OCR 결과 반영)"):
+        if apt_name_parsed:
+            st.session_state["apt_name"] = apt_name_parsed
+        if price_parsed:
+            st.session_state["price"] = price_parsed
+
 apt_name = st.text_input("\U0001F3E2 아파트 이름 입력", key="apt_name")
 price = st.number_input("\U0001F4B0 현재 시세 (만원)", min_value=0, key="price")
 
@@ -173,8 +206,24 @@ if apt_name and price > 0:
         st.write("### \U0001F469‍\U0001F3EB 전문가 총평")
         st.info("- '빠숑': 입지 전문가\n- '신성철': 거시경제 전문가\n- '훨훨': 실거주 분석 전문가\n- '당부쌤': 정주여건·수요 흐름 분석가")
 
+        # ✅ 추가 GPT 질의응답 영역
+        with st.expander("💬 GPT에게 추가 질문하기"):
+            user_question = st.text_area("질문을 입력하세요 (예: 이 아파트 투자 괜찮을까요?)")
+            if st.button("GPT에게 질문"):
+                if user_question and openai.api_key:
+                    full_prompt = f"[{apt_name}] 아파트 시세는 {price}만원입니다. 사용자 질문: {user_question}"
+                    response = openai.ChatCompletion.create(
+                        model="gpt-3.5-turbo",
+                        messages=[
+                            {"role": "system", "content": "너는 부동산 투자 분석 전문가야."},
+                            {"role": "user", "content": full_prompt}
+                        ]
+                    )
+                    st.success(response.choices[0].message.content.strip())
+
     elif user_email:
         st.warning("\U0001F512 이 항목은 유료 구독자에게만 제공됩니다.")
     else:
         st.info("왼쪽 사이드바에 이메일을 입력하면 전체 기능이 활성화됩니다.")
+
 
