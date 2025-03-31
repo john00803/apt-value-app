@@ -1,9 +1,8 @@
 streamlit
+pillow
 openai
-pandas
-gspread
-google-auth
+firebase-admin
 reportlab
-pytesseract
-Pillow
-opencv-python
+python-dotenv
+pandas
+google-cloud-vision
