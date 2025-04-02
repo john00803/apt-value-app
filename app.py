@@ -1,77 +1,83 @@
 import streamlit as st
-import os
 import openai
-import pandas as pd
+import os
+from datetime import datetime
 from io import BytesIO
+from reportlab.pdfgen import canvas
 
 from usage_tracker import load_user_plan, increment_usage, is_usage_exceeded
-from ocr_utils import extract_text_from_image
 from gpt_module import gpt_fix_ocr_text
-from parser import parse_text_v2
+from apt_parser import parse_text_v2  # ⚠️ parser.py가 아니라 apt_parser.py여야 합니다
 
-# ✅ 사이드바에서 사용자 이메일 입력
-user_email = st.sidebar.text_input("이메일을 입력하세요")
+# ✅ UI 시작
+st.set_page_config(page_title="🏠 아파트 가치 평가", layout="centered")
+st.title("🏡 아파트 가치 평가 프로그램")
+st.write("텍스트를 직접 입력하면 GPT가 분석 후 자동으로 시세 정보를 추출합니다.")
+
+# ✅ 사용자 요금제
+user_email = st.sidebar.text_input("📧 이메일을 입력하세요")
 user_plan = load_user_plan(user_email) if user_email else None
+is_premium_user = user_plan in ["standard", "pro"]
+gpt_answer = None
 
-st.info("앱이 로드되는 동안 잠시 기다려 주세요.")
-st.title("🏠 아파트 가치 평가 프로그램")
-st.write("이미지를 업로드하면 자동으로 시세 정보를 추출합니다.")
+# ✅ 텍스트 입력 (이미지 OCR 제거)
+user_input = st.text_area(
+    "📄 부동산 정보 텍스트 입력",
+    placeholder="예: 반포자이84㎡ 23억 10층 남향",
+    height=100
+)
 
-# 이미지 업로드
-uploaded_image = st.file_uploader("이미지 업로드 (png, jpg, jpeg)", type=["png", "jpg", "jpeg"])
-
-if uploaded_image:
-    image_bytes = uploaded_image.read()
-    extracted_text = extract_text_from_image(BytesIO(image_bytes))
-    st.write("**OCR 추출 결과:**")
-    st.code(extracted_text)
-    
-    # OpenAI API 키 설정 (환경 변수에 등록되어 있어야 함)
+if st.button("📊 분석하기") and user_input:
     openai.api_key = os.getenv("OPENAI_API_KEY")
-    fixed_text = gpt_fix_ocr_text(extracted_text)
-    st.write("**GPT 보정 결과:**")
-    st.code(fixed_text)
-    
-    parsed_data = parse_text_v2(fixed_text)
-    st.success(f"자동 인식 결과: {parsed_data}")
-    
-    # 사용자가 직접 수정할 수 있도록 기본값 채워진 입력폼 제공
-    apt_name = st.text_input("아파트 이름", value=parsed_data.get('apt_name', ''))
-    size = st.text_input("전용면적 (㎡)", value=parsed_data.get('size', ''))
-    floor = st.text_input("층수", value=parsed_data.get('floor', ''))
-    direction = st.text_input("방향", value=parsed_data.get('direction', ''))
-    price = st.number_input("현재 시세 (억)", min_value=0.0, value=float(parsed_data.get('price', 0)), step=0.1)
-    
-    if apt_name and price > 0:
-        st.subheader("요약 평가")
-        st.write(f"`{apt_name}`의 시세는 **{price:.1f}억**입니다.")
-        st.bar_chart({"항목": [price, price * 1.05, price * 0.95]})
-        
-        st.markdown("---")
-        st.subheader("GPT 질의응답")
-        sample_questions = [
-            f"{apt_name} 아파트는 투자 가치가 있나요?",
-            f"{apt_name}의 시세는 앞으로 어떻게 될까요?",
-            f"{apt_name}의 실거주 만족도는 어떤가요?"
-        ]
-        question = st.selectbox("질문 선택", sample_questions + ["직접 입력"])
-        user_question = st.text_input("질문 입력") if question == "직접 입력" else question
-        
-        if st.button("질문하기") and user_question:
-            if openai.api_key:
-                plan = user_plan or "free"
-                exceeded, used, limit = is_usage_exceeded(user_email, plan)
-                if exceeded:
-                    st.warning(f"'{plan}' 플랜은 하루 {limit}회까지만 질문 가능합니다. (현재 {used}회 사용)")
-                else:
-                    response = openai.ChatCompletion.create(
-                        model="gpt-3.5-turbo",
-                        messages=[
-                            {"role": "system", "content": "너는 부동산 분석 및 투자 조언 전문가야."},
-                            {"role": "user", "content": user_question}
-                        ]
-                    )
-                    st.success(response.choices[0].message.content.strip())
-                    increment_usage(user_email)
-            else:
-                st.error("OpenAI API 키가 누락되었습니다.")
+
+    if openai.api_key:
+        exceeded, used, limit = is_usage_exceeded(user_email, user_plan or "free")
+        if exceeded:
+            st.warning(f"'{user_plan}' 플랜은 하루 {limit}회까지만 질문할 수 있어요. (현재 {used}회 사용)")
+        else:
+            # ✅ GPT 보정
+            fixed_text = gpt_fix_ocr_text(user_input)
+            st.subheader("🔧 GPT 보정 결과")
+            st.code(fixed_text)
+
+            # ✅ 텍스트 파싱
+            parsed_data = parse_text_v2(fixed_text)
+            st.subheader("📌 자동 분석 결과")
+            st.json(parsed_data)
+
+            # ✅ GPT 요약 응답
+            question = f"{parsed_data['apt_name']} 아파트의 투자 가치는 어떤가요?"
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "너는 부동산 투자 조언 전문가야."},
+                    {"role": "user", "content": question}
+                ]
+            )
+            gpt_answer = response.choices[0].message.content.strip()
+            st.subheader("💬 GPT 분석")
+            st.success(gpt_answer)
+            increment_usage(user_email)
+    else:
+        st.error("OpenAI API 키가 누락되어 있습니다.")
+
+# ✅ PDF 저장
+if gpt_answer and st.button("📄 PDF로 저장"):
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer)
+    c.setFont("Helvetica", 12)
+    c.drawString(50, 800, f"아파트 가치 평가 리포트 - {parsed_data['apt_name']}")
+    c.drawString(50, 780, f"생성일: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    text_obj = c.beginText(50, 750)
+    for line in gpt_answer.split('\n'):
+        text_obj.textLine(line)
+    c.drawText(text_obj)
+    c.showPage()
+    c.save()
+
+    st.download_button(
+        label="PDF 다운로드",
+        data=buffer.getvalue(),
+        file_name=f"{parsed_data['apt_name']}_GPT분석.pdf",
+        mime="application/pdf"
+    )

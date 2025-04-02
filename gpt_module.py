@@ -1,3 +1,5 @@
+# gpt_module.py
+
 import openai
 import streamlit as st
 
@@ -5,7 +7,7 @@ def gpt_fix_ocr_text(raw_ocr):
     if not openai.api_key:
         return raw_ocr
 
-    st.write("\U0001F50D GPT 입력 텍스트:")
+    st.write("🔍 GPT 입력 텍스트:")
     st.code(raw_ocr)
 
     cleaned_ocr = raw_ocr.encode("utf-8", errors="ignore").decode("utf-8")
@@ -19,4 +21,5 @@ def gpt_fix_ocr_text(raw_ocr):
             {"role": "user", "content": prompt}
         ]
     )
+
     return response.choices[0].message.content.strip()
